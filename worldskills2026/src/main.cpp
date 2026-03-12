@@ -89,10 +89,10 @@
 const int LED_PIN = 2;             // Built-in LED on ESP32 DevKit
 
 // ─── Cytron MDD10 Pins ───────────────────────────────────────
-const int MOTOR_PWM_L  = 25;      // Left  Motor PWM  → MDD10 PWM1
-const int MOTOR_DIR_L  = 26;      // Left  Motor DIR  → MDD10 DIR1
-const int MOTOR_PWM_R  = 27;      // Right Motor PWM  → MDD10 PWM2
-const int MOTOR_DIR_R  = 14;      // Right Motor DIR  → MDD10 DIR2
+const int MOTOR_PWM_L  = 4;      // Left  Motor PWM  → MDD10 PWM1
+const int MOTOR_DIR_L  = 5;      // Left  Motor DIR  → MDD10 DIR1
+const int MOTOR_PWM_R  = 15;      // Right Motor PWM  → MDD10 PWM2
+const int MOTOR_DIR_R  = 16;      // Right Motor DIR  → MDD10 DIR2
 
 // ─── LEDC (ESP32 PWM) ─────────────────────────────────────────
 const int LEDC_FREQ      = 20000; // 20 kHz

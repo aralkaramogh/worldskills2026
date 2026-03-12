@@ -11,7 +11,7 @@
 
 #include <Arduino.h>
 
-const int LED_PIN = 2;  // Built-in LED on ESP32
+const int LED_PIN = BUILTIN_LED;  // Built-in LED on ESP32
 const long SERIAL_BAUD = 115200;
 
 void setup() {
