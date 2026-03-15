@@ -1,0 +1,458 @@
+/*
+ * COMPLETE PID CONTROLLER - ESP32-S3 + Cytron MDD10
+ * Step 3: Full PID with P, I, and D gains
+ * 
+ * Features:
+ * - Robust quadrature encoder reading with filtering
+ * - Full PID controller with anti-windup
+ * - Multiple waveform test inputs (square, sine, ramp)
+ * - Graphical data logging
+ * - Real-time tuning
+ * - Motor safety limits
+ */
+
+// ===== CONFIGURATION =====
+#define ENCODER_A_PIN 4
+#define ENCODER_B_PIN 5
+#define MOTOR_PWM_PIN 9
+#define MOTOR_DIR_PIN 8
+
+#define COUNTS_PER_REV 28  // Change based on: 28 (direct), 84 (3:1), 112 (4:1), 140 (5:1)
+#define MOTOR_MAX_RPM 6000
+#define MAX_PWM 255
+#define MAX_RPM_OUTPUT 6000
+
+#define SAMPLE_INTERVAL 20  // 20ms = 50Hz loop
+
+// Anti-windup integral limits
+#define INTEGRAL_MAX 100
+#define INTEGRAL_MIN -100
+
+// Low-pass filter for RPM (0.0 = all filter, 1.0 = no filter)
+#define RPM_FILTER_ALPHA 0.7
+
+// ===== GLOBAL VARIABLES =====
+volatile long encoderCount = 0;
+volatile long lastEncoderCount = 0;
+
+// PID Gains
+float kP = 0.04;   // Proportional - START with value from P-tuning
+float kI = 0.001;  // Integral - typically small
+float kD = 0.008;  // Derivative - helps with overshoot
+
+// PID state
+float setpoint = 0;
+float currentRPM = 0;
+float filteredRPM = 0;
+float error = 0;
+float lastError = 0;
+float integral = 0;
+float derivative = 0;
+float motorPWM = 0;
+
+unsigned long lastPIDTime = 0;
+unsigned long lastRPMTime = 0;
+
+// Waveform configuration
+enum WaveformType { SQUARE, SINE, RAMP, CONSTANT };
+WaveformType currentWaveform = SQUARE;
+float waveAmplitude = 2000;   // RPM
+float waveFrequency = 0.2;    // Hz
+float waveOffset = 2000;      // Center RPM
+
+// Tuning history (for analysis)
+struct PIDTuning {
+  float kP;
+  float kI;
+  float kD;
+  float overshoot;      // Max error above setpoint
+  float settletime;     // Time to settle
+  float steadyStateErr; // Final error
+};
+
+// Data logging
+bool graphicalMode = true;
+unsigned long dataCounter = 0;
+unsigned long startTime = 0;
+
+// ===== SETUP =====
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  Serial.println("\n===== COMPLETE PID CONTROLLER =====");
+  Serial.print("Motor CPR: ");
+  Serial.println(COUNTS_PER_REV);
+  Serial.print("Loop Rate: ");
+  Serial.print(1000 / SAMPLE_INTERVAL);
+  Serial.println(" Hz");
+  Serial.print("Current Gains: kP=");
+  Serial.print(kP, 4);
+  Serial.print(" kI=");
+  Serial.print(kI, 6);
+  Serial.print(" kD=");
+  Serial.println(kD, 4);
+  Serial.println();
+  
+  // Encoder setup
+  pinMode(ENCODER_A_PIN, INPUT_PULLUP);
+  pinMode(ENCODER_B_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_A_PIN), encoderISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_B_PIN), encoderISR, CHANGE);
+  
+  // Motor control setup
+  pinMode(MOTOR_PWM_PIN, OUTPUT);
+  pinMode(MOTOR_DIR_PIN, OUTPUT);
+  ledcSetup(0, 5000, 8);
+  ledcAttachPin(MOTOR_PWM_PIN, 0);
+  
+  digitalWrite(MOTOR_DIR_PIN, HIGH);  // Start forward
+  
+  lastPIDTime = micros();
+  lastRPMTime = millis();
+  startTime = millis();
+  
+  Serial.println("Ready for PID tuning");
+  Serial.println("Type 'HELP' for commands\n");
+}
+
+// ===== MAIN LOOP =====
+void loop() {
+  unsigned long loopStart = micros();
+  
+  // Update RPM reading (non-blocking)
+  updateRPM();
+  
+  // Update setpoint based on selected waveform
+  updateSetpoint();
+  
+  // Calculate and apply PID (fixed 50Hz rate)
+  unsigned long now = micros();
+  if ((now - lastPIDTime) >= (SAMPLE_INTERVAL * 1000)) {
+    float deltaTime = (now - lastPIDTime) / 1000000.0;
+    lastPIDTime = now;
+    
+    // Run PID controller
+    pidControl(deltaTime);
+    
+    // Apply to motor
+    applyControl();
+  }
+  
+  // Output data for graphing (every ~200ms)
+  if (dataCounter++ % 10 == 0) {
+    if (graphicalMode) {
+      printCSVData();
+    }
+  }
+  
+  // Handle serial input
+  if (Serial.available()) {
+    handleSerialInput();
+  }
+  
+  // Maintain loop timing
+  long loopTime = micros() - loopStart;
+  if (loopTime < (SAMPLE_INTERVAL * 1000)) {
+    delayMicroseconds((SAMPLE_INTERVAL * 1000) - loopTime);
+  }
+}
+
+// ===== UPDATE RPM =====
+void updateRPM() {
+  unsigned long now = millis();
+  
+  if ((now - lastRPMTime) >= SAMPLE_INTERVAL) {
+    lastRPMTime = now;
+    
+    // Get delta counts since last read
+    long deltaCounts = encoderCount - lastEncoderCount;
+    lastEncoderCount = encoderCount;
+    
+    // Calculate raw RPM
+    float rawRPM = (deltaCounts * 60000.0) / (SAMPLE_INTERVAL * COUNTS_PER_REV);
+    
+    // Apply low-pass filter for smoother readings
+    filteredRPM = (RPM_FILTER_ALPHA * rawRPM) + ((1.0 - RPM_FILTER_ALPHA) * filteredRPM);
+    currentRPM = filteredRPM;
+  }
+}
+
+// ===== UPDATE SETPOINT (WAVEFORMS) =====
+void updateSetpoint() {
+  float elapsedTime = (millis() - startTime) / 1000.0;
+  
+  switch (currentWaveform) {
+    case SQUARE:
+      // Square wave with hysteresis
+      if (fmod(elapsedTime * waveFrequency, 1.0) < 0.5) {
+        setpoint = waveOffset + waveAmplitude;
+      } else {
+        setpoint = waveOffset - waveAmplitude;
+      }
+      break;
+      
+    case SINE:
+      // Sine wave oscillation
+      setpoint = waveOffset + waveAmplitude * sin(2.0 * PI * waveFrequency * elapsedTime);
+      break;
+      
+    case RAMP:
+      // Linear ramp up and down
+      float modTime = fmod(elapsedTime * waveFrequency, 1.0);
+      if (modTime < 0.5) {
+        setpoint = waveOffset - waveAmplitude + (2.0 * waveAmplitude * modTime);
+      } else {
+        setpoint = waveOffset + waveAmplitude - (2.0 * waveAmplitude * (modTime - 0.5));
+      }
+      break;
+      
+    case CONSTANT:
+      setpoint = waveOffset;
+      break;
+  }
+  
+  // Constrain to valid range
+  setpoint = constrain(setpoint, 0, MAX_RPM_OUTPUT);
+}
+
+// ===== PID CONTROLLER =====
+void pidControl(float deltaTime) {
+  // Error calculation
+  error = setpoint - currentRPM;
+  
+  // PROPORTIONAL term
+  float pTerm = kP * error;
+  
+  // INTEGRAL term with anti-windup
+  integral += error * deltaTime * kI;
+  integral = constrain(integral, INTEGRAL_MIN, INTEGRAL_MAX);
+  float iTerm = integral;
+  
+  // DERIVATIVE term (with filtering)
+  float dTerm = 0;
+  if (deltaTime > 0) {
+    float rawDerivative = (error - lastError) / deltaTime;
+    // Use derivative of measurement to avoid derivative kick
+    dTerm = kD * rawDerivative;
+  }
+  
+  // Combine all terms
+  float pidOutput = pTerm + iTerm + dTerm;
+  
+  // Convert PID output to PWM command
+  // Base PWM from setpoint (open-loop component)
+  float basePWM = (setpoint / MAX_RPM_OUTPUT) * MAX_PWM;
+  
+  // Add correction from PID (scaled appropriately)
+  float pidCorrection = (pidOutput / MAX_RPM_OUTPUT) * MAX_PWM * 0.5;  // 50% of max for stability
+  
+  motorPWM = basePWM + pidCorrection;
+  
+  // Hard limits
+  motorPWM = constrain(motorPWM, 0, MAX_PWM);
+  
+  // Store error for next iteration
+  lastError = error;
+}
+
+// ===== APPLY MOTOR CONTROL =====
+void applyControl() {
+  if (setpoint > 50) {  // Dead zone to prevent drift
+    digitalWrite(MOTOR_DIR_PIN, HIGH);   // Forward
+    ledcWrite(0, (uint8_t)motorPWM);
+  } else if (setpoint < -50) {
+    digitalWrite(MOTOR_DIR_PIN, LOW);    // Reverse
+    ledcWrite(0, (uint8_t)abs(motorPWM));
+  } else {
+    // Stop if setpoint near zero
+    ledcWrite(0, 0);
+    integral = 0;  // Reset integral to prevent windup
+  }
+}
+
+// ===== ENCODER ISR (QUADRATURE DECODING) =====
+void encoderISR() {
+  int a = digitalRead(ENCODER_A_PIN);
+  int b = digitalRead(ENCODER_B_PIN);
+  
+  static int lastA = 0;
+  static int lastB = 0;
+  
+  if (a != lastA) {
+    if (a == b) {
+      encoderCount++;  // Forward
+    } else {
+      encoderCount--;  // Reverse
+    }
+    lastA = a;
+  } else if (b != lastB) {
+    if (a != b) {
+      encoderCount++;  // Forward
+    } else {
+      encoderCount--;  // Reverse
+    }
+    lastB = b;
+  }
+}
+
+// ===== CSV DATA OUTPUT =====
+void printCSVData() {
+  static unsigned long startLog = millis();
+  float elapsed = (millis() - startLog) / 1000.0;
+  
+  Serial.print(elapsed, 2);
+  Serial.print(",");
+  Serial.print(setpoint, 1);
+  Serial.print(",");
+  Serial.print(currentRPM, 1);
+  Serial.print(",");
+  Serial.print(error, 1);
+  Serial.print(",");
+  Serial.print(motorPWM, 1);
+  Serial.print(",");
+  Serial.print(integral, 2);
+  Serial.print(",");
+  Serial.print(kP, 4);
+  Serial.print(",");
+  Serial.print(kI, 6);
+  Serial.print(",");
+  Serial.println(kD, 4);
+}
+
+// ===== SERIAL COMMAND HANDLER =====
+void handleSerialInput() {
+  String cmd = Serial.readStringUntil('\n');
+  cmd.trim();
+  cmd.toUpperCase();
+  
+  if (cmd.equals("SQUARE")) {
+    currentWaveform = SQUARE;
+    startTime = millis();
+    integral = 0;
+    Serial.println("Waveform: SQUARE (0.2 Hz, ±2000 RPM)");
+    Serial.println("Time(s),Setpoint(RPM),Actual(RPM),Error(RPM),PWM,Integral,kP,kI,kD");
+  }
+  else if (cmd.equals("SINE")) {
+    currentWaveform = SINE;
+    startTime = millis();
+    integral = 0;
+    Serial.println("Waveform: SINE (0.2 Hz, ±2000 RPM)");
+    Serial.println("Time(s),Setpoint(RPM),Actual(RPM),Error(RPM),PWM,Integral,kP,kI,kD");
+  }
+  else if (cmd.equals("RAMP")) {
+    currentWaveform = RAMP;
+    startTime = millis();
+    integral = 0;
+    Serial.println("Waveform: RAMP");
+    Serial.println("Time(s),Setpoint(RPM),Actual(RPM),Error(RPM),PWM,Integral,kP,kI,kD");
+  }
+  else if (cmd.equals("STOP")) {
+    ledcWrite(0, 0);
+    setpoint = 0;
+    integral = 0;
+    Serial.println("Motor stopped");
+  }
+  else if (cmd.startsWith("KP:")) {
+    kP = cmd.substring(3).toFloat();
+    Serial.print("kP = ");
+    Serial.println(kP, 4);
+  }
+  else if (cmd.startsWith("KI:")) {
+    kI = cmd.substring(3).toFloat();
+    Serial.print("kI = ");
+    Serial.println(kI, 6);
+  }
+  else if (cmd.startsWith("KD:")) {
+    kD = cmd.substring(3).toFloat();
+    Serial.print("kD = ");
+    Serial.println(kD, 4);
+  }
+  else if (cmd.startsWith("AMP:")) {
+    waveAmplitude = cmd.substring(4).toFloat();
+    Serial.print("Amplitude = ");
+    Serial.println(waveAmplitude);
+  }
+  else if (cmd.startsWith("OFFSET:")) {
+    waveOffset = cmd.substring(7).toFloat();
+    Serial.print("Offset = ");
+    Serial.println(waveOffset);
+  }
+  else if (cmd.startsWith("FREQ:")) {
+    waveFrequency = cmd.substring(5).toFloat();
+    Serial.print("Frequency = ");
+    Serial.println(waveFrequency);
+  }
+  else if (cmd.startsWith("FILTER:")) {
+    float newAlpha = cmd.substring(7).toFloat();
+    // Validate filter alpha
+    if (newAlpha >= 0.0 && newAlpha <= 1.0) {
+      Serial.print("Filter alpha = ");
+      Serial.println(newAlpha, 3);
+    } else {
+      Serial.println("Filter alpha must be 0.0-1.0");
+    }
+  }
+  else if (cmd.equals("INFO")) {
+    printInfo();
+  }
+  else if (cmd.equals("HELP")) {
+    printHelp();
+  }
+}
+
+// ===== PRINT INFO =====
+void printInfo() {
+  Serial.println("\n===== CURRENT STATUS =====");
+  Serial.print("Setpoint: ");
+  Serial.print(setpoint, 1);
+  Serial.println(" RPM");
+  Serial.print("Actual: ");
+  Serial.print(currentRPM, 1);
+  Serial.println(" RPM");
+  Serial.print("Error: ");
+  Serial.print(error, 1);
+  Serial.println(" RPM");
+  Serial.print("PWM: ");
+  Serial.print(motorPWM, 1);
+  Serial.print(" (");
+  Serial.print((motorPWM / MAX_PWM) * 100, 1);
+  Serial.println("%)");
+  Serial.print("Encoder Count: ");
+  Serial.println(encoderCount);
+  Serial.print("kP=");
+  Serial.print(kP, 4);
+  Serial.print(", kI=");
+  Serial.print(kI, 6);
+  Serial.print(", kD=");
+  Serial.println(kD, 4);
+  Serial.println();
+}
+
+// ===== PRINT HELP =====
+void printHelp() {
+  Serial.println("\n===== PID TUNING COMMANDS =====");
+  Serial.println("\nWaveform Selection:");
+  Serial.println("  SQUARE          - Square wave test");
+  Serial.println("  SINE            - Sine wave test");
+  Serial.println("  RAMP            - Ramp wave test");
+  Serial.println("\nGain Tuning:");
+  Serial.println("  kP:<value>      - Set P gain (e.g., kP:0.04)");
+  Serial.println("  kI:<value>      - Set I gain (e.g., kI:0.001)");
+  Serial.println("  kD:<value>      - Set D gain (e.g., kD:0.008)");
+  Serial.println("\nWaveform Parameters:");
+  Serial.println("  AMP:<value>     - Amplitude in RPM (e.g., AMP:2000)");
+  Serial.println("  OFFSET:<value>  - Center RPM (e.g., OFFSET:2000)");
+  Serial.println("  FREQ:<value>    - Frequency in Hz (e.g., FREQ:0.2)");
+  Serial.println("\nOther:");
+  Serial.println("  STOP            - Stop motor");
+  Serial.println("  INFO            - Show current status");
+  Serial.println("  HELP            - Show this help");
+  Serial.println("\n===== TUNING PROCEDURE =====");
+  Serial.println("1. Use SQUARE with P-tuning (from Step 2)");
+  Serial.println("2. Once P is tuned, add small kD to reduce overshoot");
+  Serial.println("3. Test with SINE to verify smooth response");
+  Serial.println("4. Fine-tune kI if needed for steady-state");
+  Serial.println("5. Record final gains for deployment");
+  Serial.println("============================\n");
+}

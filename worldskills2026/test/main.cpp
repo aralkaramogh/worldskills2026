@@ -114,8 +114,8 @@ const bool INVERT_RIGHT = true;   // Right motor mounted mirrored
 
 // ─── Speed Variables ─────────────────────────────────────────
 // User-adjustable via serial (Q/Z, E/C).
-int forwardBackwardSpeed = 20;    // % (default)
-int turningSpeed         = 30;    // % (default)
+int forwardBackwardSpeed = 100;    // % (default)
+int turningSpeed         = 100;    // % (default)
 
 // Hard safety caps — not adjustable via serial.
 // Increase cautiously; HD Hex + gearbox can generate high torque.
