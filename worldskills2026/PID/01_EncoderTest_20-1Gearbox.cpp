@@ -89,11 +89,11 @@ void setup() {
   
   if (!SERIAL_PLOTTER_MODE) {
     Serial.println("Motor started at 50% speed (PWM = 128)");
-    Serial.println("\nTime(ms)\tCounts\tDelta\tRPM\tPWM%");
+    Serial.println("\nTime(ms)\tCounts\tDelta\tRPM\tExpectedRPM");
     Serial.println("================================================");
   } else {
     // Print only header line so Arduino Serial Plotter can label axes
-    Serial.println("Time_ms\tCounts\tDelta\tRPM\tPWM");
+    Serial.println("Time_ms\tCounts\tDelta\tRPM\tExpectedRPM");
   }
 }
 
@@ -113,6 +113,9 @@ void loop() {
     // RPM = (counts/interval) * (60000ms / interval) / CPR
     currentRPM = (deltaCounts * 60000.0) / (SAMPLE_INTERVAL * COUNTS_PER_REV);
     
+    // Calculate expected RPM based on PWM (linear approximation)
+    float expectedRPM = (motorPWM / 255.0) * MOTOR_MAX_RPM;
+    
     // Print data
     if (SERIAL_PLOTTER_MODE) {
       // Numeric-only output for Arduino Serial Plotter
@@ -124,7 +127,7 @@ void loop() {
       Serial.print("\t");
       Serial.print(currentRPM, 1);
       Serial.print("\t");
-      Serial.println((motorPWM / 255.0) * 100, 1);
+      Serial.println(expectedRPM, 1);
     } else {
       // Human-readable output (includes current RPM explicitly)
       Serial.print("Time: ");
@@ -136,9 +139,8 @@ void loop() {
       Serial.print(deltaCounts);
       Serial.print(") , RPM: ");
       Serial.print(currentRPM, 1);
-      Serial.print(" , PWM: ");
-      Serial.print((motorPWM / 255.0) * 100, 1);
-      Serial.println(" %");
+      Serial.print(" , Expected RPM: ");
+      Serial.println(expectedRPM, 1);
     }
   }
   
@@ -217,11 +219,8 @@ void handleSerialInput() {
       Serial.println(MOTOR_MAX_RPM);
       Serial.print("Current RPM: ");
       Serial.println(currentRPM, 1);
-      Serial.print("Current PWM: ");
-      Serial.print(motorPWM);
-      Serial.print(" (");
-      Serial.print((motorPWM / 255.0) * 100, 1);
-      Serial.println("%)");
+      Serial.print("Expected RPM: ");
+      Serial.println((motorPWM / 255.0) * MOTOR_MAX_RPM, 1);
       Serial.println("=======================\n");
     }
     else if (command.equals("HELP")) {
