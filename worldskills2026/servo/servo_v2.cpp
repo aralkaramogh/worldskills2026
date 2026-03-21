@@ -6,7 +6,6 @@ void setup() {
 
   ledcSetup(0, 50, 16);      // channel, frequency, resolution
   ledcAttachPin(servoPin, 0);
-
 }
 
 void loop() {
