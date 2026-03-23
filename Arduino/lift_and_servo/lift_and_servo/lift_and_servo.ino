@@ -114,16 +114,19 @@ Example:
 #define PWM_PIN 5
 #define DIR_PIN 4
 
-#define ENC_A 15
-#define ENC_B 16
+#define ENC_A 18
+#define ENC_B 17
 
-#define SERVO_PIN 17
+#define SERVO_PIN 15
+
 
 // ---------------- SYSTEM PARAMETERS ----------------
-float counts_per_mm = 4.66;
-long max_counts = 1397;
+//float counts_per_mm = 4.66;
+//long max_counts = 1397;
+float counts_per_mm = 2.87;
+long max_counts = 949;
 
-int pwmSpeed = 180;
+int pwmSpeed = 150;
 int slowSpeed = 100;
 
 // ---------------- SERVO PARAMETERS ----------------

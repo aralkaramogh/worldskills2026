@@ -35,8 +35,8 @@ P    → print position
 #define PWM_PIN 5
 #define DIR_PIN 4
 
-#define ENC_A 15
-#define ENC_B 16
+#define ENC_A 6
+#define ENC_B 7
 
 // ---------------- SYSTEM PARAMETERS ----------------
 float counts_per_mm = 4.66;   // 🔧 CALIBRATE THIS
