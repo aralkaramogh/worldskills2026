@@ -62,11 +62,11 @@ homingSpeed   → reduce if hitting hard
 #include <Arduino.h>
 
 // ---------------- PIN CONFIG ----------------
-#define PWM_PIN 5
-#define DIR_PIN 4
+#define PWM_PIN 4
+#define DIR_PIN 5
 
-#define ENC_A 6
-#define ENC_B 7
+#define ENC_A 17
+#define ENC_B 18
 
 #define LIMIT_BOTTOM 15  // ACTIVE LOW
 

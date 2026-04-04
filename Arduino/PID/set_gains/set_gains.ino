@@ -10,7 +10,7 @@
  *  CONTROL STRATEGY:
  *  - Uses average RPM of both motors
  *  - Same PWM applied to both motors
- *
+ *'
  *  SERIAL COMMANDS:
  *   RPM:100   → Set speed
  *   KP:1.2    → Set Kp
@@ -21,10 +21,10 @@
  */
 
 // ================== PIN CONFIG ==================
-#define ENC_L_A 16
-#define ENC_L_B 15
-#define ENC_R_A 18
-#define ENC_R_B 17
+#define ENC_L_A 18
+#define ENC_L_B 17
+#define ENC_R_A 16
+#define ENC_R_B 15
 
 #define PWM_L 5
 #define DIR_L 4
@@ -43,9 +43,9 @@ long lastL = 0;
 long lastR = 0;
 
 // ================== PID VARIABLES ==================
-float kP = 1.2;
-float kI = 0.0;
-float kD = 0.2;
+float kP = 2.80;
+float kI = 1.60;
+float kD = 0.02;
 
 float setRPM = 0;
 
@@ -58,8 +58,8 @@ unsigned long prevTime = 0;
 
 // ================== ISR ==================
 void IRAM_ATTR encL_ISR() {
-  if (digitalRead(ENC_L_A) == digitalRead(ENC_L_B)) ticksL++;
-  else ticksL--;
+  if (digitalRead(ENC_L_A) == digitalRead(ENC_L_B)) ticksL--;
+  else ticksL++;
 }
 
 void IRAM_ATTR encR_ISR() {
@@ -142,7 +142,16 @@ Serial.print(" | ERROR: ");
 Serial.print(error);
 
 Serial.print(" | PWM: ");
-Serial.println(pwm);
+Serial.print(pwm);
+
+Serial.print(" | KP: ");
+Serial.print(kP);
+
+Serial.print(" | KI : ");
+Serial.print(kI);
+
+Serial.print(" | KD: ");
+Serial.println(kD);
   }
 
   // ---------- SERIAL CONTROL ----------

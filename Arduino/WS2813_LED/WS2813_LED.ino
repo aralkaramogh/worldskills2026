@@ -46,8 +46,8 @@
 
 #include <Adafruit_NeoPixel.h>
 
-#define LED_PIN     21
-#define NUM_LEDS    10   // Change as needed
+#define LED_PIN     10
+#define NUM_LEDS    10   // Change as neededo
 
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 

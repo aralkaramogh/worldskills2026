@@ -52,11 +52,11 @@ counts_per_mm = total_counts / height_mm
 #include <Arduino.h>
 
 // ---------------- PIN CONFIG ----------------
-#define PWM_PIN 5
-#define DIR_PIN 4
+#define PWM_PIN 7
+#define DIR_PIN 6
 
-#define ENC_A 6
-#define ENC_B 7
+#define ENC_A 18
+#define ENC_B 17
 
 // ---------------- VARIABLES ----------------
 volatile long encoderCount = 0;
@@ -67,9 +67,9 @@ int pwmSpeed = 150;
 void IRAM_ATTR handleEncoder() {
   int b = digitalRead(ENC_B);
   if (b == HIGH)
-    encoderCount++;
-  else
     encoderCount--;
+  else
+    encoderCount++;
 }
 
 // ---------------- MOTOR CONTROL ----------------
@@ -79,13 +79,13 @@ void motorStop() {
 }
 
 void motorUp() {
-  digitalWrite(DIR_PIN, HIGH);
+  digitalWrite(DIR_PIN, LOW);
   ledcWrite(PWM_PIN, pwmSpeed);
   Serial.println("MOVING UP");
 }
 
 void motorDown() {
-  digitalWrite(DIR_PIN, LOW);
+  digitalWrite(DIR_PIN, HIGH);
   ledcWrite(PWM_PIN, pwmSpeed);
   Serial.println("MOVING DOWN");
 }

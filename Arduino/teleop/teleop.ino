@@ -25,8 +25,8 @@
 #define WATCHDOG_MS     500
 
 // ── Speed ────────────────────────────────────────────────────
-int fwdSpeed  = 30;
-int turnSpeed = 40;
+int fwdSpeed  = 25;
+int turnSpeed = 25;
 
 const int FWD_CAP  = 80;
 const int TURN_CAP = 80;

@@ -2,10 +2,10 @@
 #include <Arduino.h>
 
 // ================== PINS ==================
-#define ENCODER_A_PIN 16
-#define ENCODER_B_PIN 15
-#define MOTOR_PWM_PIN 5
-#define MOTOR_DIR_PIN 4
+#define ENCODER_A_PIN 18
+#define ENCODER_B_PIN 17
+#define MOTOR_PWM_PIN 16
+#define MOTOR_DIR_PIN 15
 
 // ================== MOTOR ==================
 #define COUNTS_PER_REV 560

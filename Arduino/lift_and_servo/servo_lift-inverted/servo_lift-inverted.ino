@@ -1,112 +1,3 @@
-/*
-===========================================================
-ESP32 LIFT + GRIPPER CONTROLLER (ROS2-READY INTERFACE)
-===========================================================
-
-AUTHOR: (Your Name)
-ROLE: Low-Level Actuator Controller (for ROS2 integration)
-
------------------------------------------------------------
-📌 SYSTEM ROLE (IMPORTANT FOR ROS DEVELOPER)
------------------------------------------------------------
-
-This ESP32 acts as a:
-→ Deterministic actuator controller
-→ Executes lift + gripper commands reliably
-
-It DOES NOT handle:
-✘ Vision (YOLO)
-✘ Planning
-✘ Navigation
-
-It ONLY executes:
-✔ Height commands (mm)
-✔ Gripper commands (open/close)
-
------------------------------------------------------------
-📡 COMMUNICATION PROTOCOL (SERIAL)
------------------------------------------------------------
-
-All commands are ASCII-based, newline terminated.
-
----------------- INPUT COMMANDS ----------------
-
-Lxxx   → Move lift to height in mm
-         Example: L120
-
-U      → Manual UP
-D      → Manual DOWN
-S      → Stop motion
-E      → EMERGENCY STOP (highest priority)
-
-o      → Open gripper
-c      → Close gripper (with micro-release)
-
-P      → Request position
-B      → Request BUSY/IDLE status
-
----------------- OUTPUT RESPONSES ----------------
-
-STATUS:BUSY
-STATUS:IDLE
-STATUS:DONE
-
-POS:<encoder_count>
-
-GRIPPER:OPEN
-GRIPPER:CLOSED
-
-ERROR:OUT_OF_RANGE
-EMERGENCY_STOP
-
------------------------------------------------------------
-🤖 ROS2 INTEGRATION EXPECTATION
------------------------------------------------------------
-
-ROS side should:
-
-1. Send:
-   Lxxx (height in mm)
-
-2. Wait for:
-   STATUS:DONE
-
-3. Then send:
-   c (close gripper)
-
-4. For placement:
-   send Lxxx → wait DONE → send o
-
------------------------------------------------------------
-⚠️ SAFETY CONTRACT
------------------------------------------------------------
-
-✔ Input values are clamped internally
-✔ Motion stops automatically near target
-✔ Emergency stop available via 'E'
-✔ No homing required (manual zero at boot)
-
------------------------------------------------------------
-📏 CALIBRATION NOTES
------------------------------------------------------------
-
-counts_per_mm = encoder_counts / actual_height_mm
-
-Example:
-1400 counts / 300 mm = 4.66 counts/mm
-
------------------------------------------------------------
-📌 STARTUP PROCEDURE
------------------------------------------------------------
-
-1. Manually bring lift to bottom
-2. Reset ESP32
-3. System assumes:
-   encoderCount = 0 (bottom reference)
-
-===========================================================
-*/
-
 #include <Arduino.h>
 #include <ESP32Servo.h>
 
@@ -119,12 +10,9 @@ Example:
 
 #define SERVO_PIN 15
 
-
 // ---------------- SYSTEM PARAMETERS ----------------
-//float counts_per_mm = 4.66;
-//long max_counts = 1397;
-float counts_per_mm = 2.87;
-long max_counts = 949;
+float counts_per_mm = 1.38;
+long max_counts = 414;
 
 int pwmSpeed = 150;
 int slowSpeed = 100;
@@ -136,7 +24,6 @@ int openPos  = 178;
 int closePos = 130;
 int releaseOffset = 2;
 
-
 // ---------------- VARIABLES ----------------
 volatile long encoderCount = 0;
 
@@ -146,6 +33,8 @@ bool moving = false;
 // ---------------- ENCODER ISR ----------------
 void IRAM_ATTR handleEncoder() {
   int b = digitalRead(ENC_B);
+
+  // ✅ MATCHED WITH CALIBRATION CODE
   if (b == HIGH)
     encoderCount--;
   else
@@ -160,13 +49,13 @@ void motorStop() {
 }
 
 void motorUp(int speed) {
-  digitalWrite(DIR_PIN, HIGH);
+  digitalWrite(DIR_PIN, LOW);   // ✅ FIXED
   ledcWrite(PWM_PIN, speed);
   moving = true;
 }
 
 void motorDown(int speed) {
-  digitalWrite(DIR_PIN, LOW);
+  digitalWrite(DIR_PIN, HIGH);  // ✅ FIXED
   ledcWrite(PWM_PIN, speed);
   moving = true;
 }
@@ -174,18 +63,16 @@ void motorDown(int speed) {
 // ---------------- MOVE ----------------
 void moveToHeight(float height_mm) {
 
-  // Clamp for safety
+  // Clamp
   if (height_mm < 0) height_mm = 0;
   if (height_mm > (max_counts / counts_per_mm))
     height_mm = max_counts / counts_per_mm;
 
-  long target = height_mm * counts_per_mm;
+  targetPosition = height_mm * counts_per_mm;
 
-  targetPosition = target;
   moving = true;
 
   Serial.println("STATUS:BUSY");
-
   Serial.print("MOVING TO:");
   Serial.println(height_mm);
 }
@@ -260,10 +147,7 @@ void loop() {
     }
 
     else if (cmd == "B") {
-      if (moving)
-        Serial.println("STATUS:BUSY");
-      else
-        Serial.println("STATUS:IDLE");
+      Serial.println(moving ? "STATUS:BUSY" : "STATUS:IDLE");
     }
 
     else if (cmd == "U") {
@@ -298,16 +182,10 @@ void loop() {
       Serial.println("STATUS:DONE");
     }
     else if (error > 0) {
-      if (abs(error) < 50)
-        motorUp(slowSpeed);
-      else
-        motorUp(pwmSpeed);
+      (abs(error) < 50) ? motorUp(slowSpeed) : motorUp(pwmSpeed);
     }
     else {
-      if (abs(error) < 50)
-        motorDown(slowSpeed);
-      else
-        motorDown(pwmSpeed);
+      (abs(error) < 50) ? motorDown(slowSpeed) : motorDown(pwmSpeed);
     }
   }
 }

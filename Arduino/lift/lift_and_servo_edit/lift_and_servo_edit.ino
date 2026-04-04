@@ -123,8 +123,11 @@ Example:
 // ---------------- SYSTEM PARAMETERS ----------------
 //float counts_per_mm = 4.66;
 //long max_counts = 1397;
-float counts_per_mm = 2.87;
-long max_counts = 949;
+//float counts_per_mm = 2.87;
+//long max_counts = 949;
+
+float counts_per_mm = 1.38;
+long max_counts = 414;
 
 int pwmSpeed = 150;
 int slowSpeed = 100;
@@ -149,7 +152,7 @@ void IRAM_ATTR handleEncoder() {
   if (b == HIGH)
     encoderCount--;
   else
-    encoderCount++;
+    encoderCount++  ;
 }
 
 // ---------------- MOTOR CONTROL ----------------
